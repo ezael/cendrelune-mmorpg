@@ -6,6 +6,8 @@ import { colyseus } from "colyseus/vite";
 export default defineConfig(({ mode }) => ({
   build: { outDir: "dist/client", chunkSizeWarningLimit: 6000 },
   server: { host: true },
+  // labo.html : planche de test des personnages (page à part, non liée depuis le jeu)
+  environments: { client: { build: { rollupOptions: { input: { main: "index.html", labo: "labo.html" } } } } },
   plugins: [
     ...(mode === "client"
       ? []
