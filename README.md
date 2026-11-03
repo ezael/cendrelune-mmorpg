@@ -44,7 +44,13 @@ le fichier, choisis **Ouvrir**, puis confirme.
 | Entrée | Discuter |
 | H | Afficher / masquer l'aide |
 
-Commandes de chat : `/salut`, `/assis`, `/qui`, `/loc`, `/aide`.
+Commandes de chat : `/salut`, `/assis`, `/qui`, `/loc`, `/ambiance`, `/aide`.
+
+### Ambiances
+
+La Clairière peut prendre 5 ambiances. Pour en essayer une (chez toi seul), tape dans le chat :
+`/ambiance printemps`, `/ambiance automne`, `/ambiance hiver`, `/ambiance marais` ou `/ambiance cendres`.
+`/ambiance zone` revient à l'ambiance prévue. On peut aussi ouvrir directement `http://localhost:2567/?ambiance=hiver`.
 
 ## Contenu du prototype
 

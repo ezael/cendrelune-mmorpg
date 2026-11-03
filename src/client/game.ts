@@ -10,6 +10,7 @@ import { buildDungeon } from "./world/dungeon.js";
 import { buildOutdoor } from "./world/outdoor.js";
 import type { ZoneWorld } from "./world/world.js";
 import { clockLabel } from "./world/atmosphere.js";
+import { BIOMES, findBiome, setForcedBiome } from "./world/biomes.js";
 import { Character } from "./entities/character.js";
 import { MobView } from "./entities/mob.js";
 import { Hud, Loading } from "./ui/hud.js";
@@ -82,6 +83,7 @@ export class Game {
   private portalNodes: Mesh[] = [];
   /** Lanterne du joueur : une lumière chaude qui le suit sous terre. */
   private lantern: PointLight | null = null;
+  private pipeline: DefaultRenderingPipeline;
 
   private client: ColyseusSDK;
   private room: Room<any, any> | null = null;
@@ -141,6 +143,7 @@ export class Game {
     this.camera = cam;
 
     const pipeline = new DefaultRenderingPipeline("pp", true, this.scene, [cam]);
+    this.pipeline = pipeline;
     pipeline.samples = LOW_QUALITY ? 1 : 4;
     pipeline.fxaaEnabled = true;
     pipeline.bloomEnabled = !LOW_QUALITY;
@@ -201,6 +204,7 @@ export class Game {
       this.lantern.range = 16;
       this.lantern.intensity = 1.0;
     }
+    this.applyGrade();
     this.minimap.setZone(zone);
     this.hud.setZoneLabel(ZONES[zone].name);
     this.portalNodes.forEach((n) => n.dispose());
@@ -214,7 +218,39 @@ export class Game {
 
   private groundY(x: number, z: number): number {
     if (ZONES[this.zoneId].kind === "dungeon") return 0;
+    const floor = this.world?.waterFloor;
+    const area = this.world?.waterArea;
+    // Lac gelé (ou croûte de cendre) : on marche à la surface.
+    if (floor !== undefined && area && Math.hypot(x - area.x, z - area.z) < area.radius) {
+      return Math.max(heightAt(this.zoneId, x, z), floor);
+    }
     return Math.max(heightAt(this.zoneId, x, z), WATER_LEVEL - 0.55);
+  }
+
+  /** Étalonnage de l'image propre à l'ambiance de la zone. */
+  private applyGrade() {
+    const ip = this.pipeline.imageProcessing;
+    const g = this.world?.grade;
+    ip.exposure = g?.exposure ?? 1.15;
+    ip.contrast = g?.contrast ?? 1.18;
+    ip.colorCurvesEnabled = !!g;
+    if (g) {
+      ip.colorCurves!.globalSaturation = g.saturation;
+      ip.colorCurves!.globalHue = g.hue;
+      ip.colorCurves!.globalDensity = g.hueAmount;
+    }
+  }
+
+  /** Change l'ambiance de la zone extérieure (essai local, visible par toi seul). */
+  setAmbiance(id: string | null) {
+    setForcedBiome(id);
+    if (ZONES[this.zoneId].kind !== "outdoor") return;
+    this.loadWorld(this.zoneId);
+    const shadows = this.world!.shadows;
+    this.me?.addToShadows(shadows);
+    for (const r of this.remotes.values()) r.char.addToShadows(shadows);
+    for (const m of this.mobs.values()) m.view.addToShadows(shadows);
+    if (this.me) this.pos.y = this.groundY(this.pos.x, this.pos.z);
   }
 
   /** Lance la partie depuis l'écran titre. */
@@ -291,12 +327,11 @@ export class Game {
     this.room = room;
     this.sessionId = room.sessionId;
     const cb: any = Callbacks.get(room);
-    const shadows = this.world!.shadows;
 
     this.unsub.push(cb.onAdd("players", (p: any, id: string) => {
       if (id === this.sessionId) {
         this.me = new Character(this.scene, p.name, p.color, { pickId: id });
-        this.me.addToShadows(shadows);
+        this.me.addToShadows(this.world?.shadows ?? null);
         this.pos.set(p.x, this.groundY(p.x, p.z), p.z);
         this.me.setPosition(this.pos.x, this.pos.y, this.pos.z);
         this.me.face(Math.atan2(-this.pos.x, -this.pos.z), 0, true);
@@ -306,7 +341,7 @@ export class Game {
         return;
       }
       const char = new Character(this.scene, p.name, p.color, { pickId: id });
-      char.addToShadows(shadows);
+      char.addToShadows(this.world?.shadows ?? null);
       char.setPosition(p.x, p.y, p.z);
       const plate = this.plates.create(char.headAnchor, p.name, "#8fd0ff", false);
       this.remotes.set(id, { char, plate, x: p.x, y: p.y, z: p.z, speed: 0 });
@@ -322,7 +357,7 @@ export class Game {
     this.unsub.push(cb.onAdd("mobs", (m: any, id: string) => {
       const kind = MOB_KINDS[m.kind as MobKindId];
       const view = new MobView(this.scene, id, kind);
-      view.addToShadows(shadows);
+      view.addToShadows(this.world?.shadows ?? null);
       view.root.position.set(m.x, this.groundY(m.x, m.z), m.z);
       const plate = this.plates.create(view.headAnchor, kind.name, "#ffffff", true);
       this.mobs.set(id, { view, plate, kind, x: m.x, z: m.z, speed: 0 });
@@ -514,8 +549,35 @@ export class Game {
       switch (cmd) {
         case "aide":
         case "help":
-          this.hud.chat("sys", "Commandes : /salut, /assis, /qui, /loc, /aide. Touche H pour les contrôles.");
+          this.hud.chat("sys", "Commandes : /salut, /assis, /qui, /loc, /ambiance, /aide. Touche H pour les contrôles.");
           return;
+        case "ambiance": {
+          const arg = text.slice(1).split(/\s+/).slice(1).join(" ");
+          const list = Object.values(BIOMES).map((b) => b.id).join(", ");
+          if (!arg) {
+            const cur = this.world?.biome;
+            this.hud.chat("sys", `Ambiance actuelle : ${cur?.name ?? "aucune (intérieur)"}. Essaie /ambiance <nom> parmi : ${list}, ou /ambiance zone.`);
+            return;
+          }
+          if (ZONES[this.zoneId].kind !== "outdoor") {
+            this.hud.chat("err", "Les ambiances ne s'appliquent qu'aux zones extérieures.");
+            return;
+          }
+          if (["zone", "defaut", "défaut"].includes(arg.toLowerCase())) {
+            this.setAmbiance(null);
+            this.hud.chat("sys", `Retour à l'ambiance prévue pour la zone : ${this.world?.biome?.name}.`);
+            return;
+          }
+          const b = findBiome(arg);
+          if (!b) {
+            this.hud.chat("err", `Ambiance inconnue : ${arg}. Choix : ${list}.`);
+            return;
+          }
+          this.setAmbiance(b.id);
+          this.hud.banner(b.name, b.mood);
+          this.hud.chat("sys", `Ambiance « ${b.name} » (visible par toi seul). ${b.mood}`);
+          return;
+        }
         case "salut":
           this.emoteUntil = performance.now() + 2600;
           this.sitting = false;
@@ -911,6 +973,11 @@ export class Game {
   /** Accès de débogage (tests automatisés). */
   debugWalkTo(x: number, z: number) {
     this.autopilot = { x, z };
+  }
+
+  debugAmbiance(id: string | null) {
+    this.setAmbiance(id);
+    return this.world?.biome?.id;
   }
 
   debugTime(t: number | null) {

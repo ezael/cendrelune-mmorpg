@@ -6,6 +6,7 @@ import {
   Scene, ShaderMaterial, Vector3,
 } from "@babylonjs/core";
 import { hex } from "./kit.js";
+import type { Biome } from "./biomes.js";
 import { LOW_QUALITY } from "../quality.js";
 
 Effect.ShadersStore["skyVertexShader"] = `
@@ -113,7 +114,20 @@ export class Atmosphere {
   /** 0 en plein jour, 1 en pleine nuit : sert aux fenêtres, lanternes et lucioles. */
   night = 0;
 
-  constructor(private scene: Scene) {
+  private tint: {
+    top: Color3; topK: number; horizon: Color3; horizonK: number; fog: Color3; fogK: number;
+    sun: Color3; sunK: number; sunPower: number; fogDensity: number;
+  };
+
+  constructor(private scene: Scene, biome?: Biome) {
+    const s = biome?.sky;
+    this.tint = {
+      top: hex(s?.tint ?? "#4f8fe0"), topK: s?.amount ?? 0,
+      horizon: hex(s?.horizonTint ?? "#ffffff"), horizonK: s?.horizonAmount ?? 0,
+      fog: hex(s?.fogTint ?? "#ffffff"), fogK: s?.fogAmount ?? 0,
+      sun: hex(s?.sunTint ?? "#ffffff"), sunK: s?.sunAmount ?? 0,
+      sunPower: s?.sunPower ?? 1, fogDensity: s?.fogDensity ?? 0.0075,
+    };
     this.hemi = new HemisphericLight("hemi", new Vector3(0.2, 1, 0.1), scene);
     this.sun = new DirectionalLight("sun", new Vector3(-0.5, -1, -0.3), scene);
     this.sun.position = new Vector3(60, 120, 40);
@@ -146,12 +160,28 @@ export class Atmosphere {
     this.sky.renderingGroupId = 0;
 
     scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.0075;
+    scene.fogDensity = this.tint.fogDensity;
   }
 
   update(dt: number, timeOfDay: number) {
     this.elapsed += dt;
     const c = sample(timeOfDay);
+    // Teinte de l'ambiance : forte le jour, adoucie la nuit pour garder un ciel nocturne lisible.
+    const day = Math.max(0, Math.min(1, (Math.sin((timeOfDay - 0.25) * Math.PI * 2) + 0.15) * 2));
+    const t = this.tint;
+    const dk = 0.35 + 0.65 * day;
+    const tintTo = (col: Color3, target: Color3, k: number) => {
+      // Garde la luminosité de la clé de ciel, applique la couleur de l'ambiance.
+      const lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+      const tl = target.r * 0.3 + target.g * 0.59 + target.b * 0.11 || 1;
+      return Color3.Lerp(col, target.scale(lum / tl), k * dk);
+    };
+    c.top = tintTo(c.top, t.top, t.topK);
+    c.horizon = tintTo(c.horizon, t.horizon, t.horizonK);
+    c.fog = tintTo(c.fog, t.fog, t.fogK);
+    c.sun = Color3.Lerp(c.sun, t.sun, t.sunK * dk);
+    c.hemiSky = Color3.Lerp(c.hemiSky, c.fog, 0.25 * t.fogK);
+    c.sunI *= 1 - (1 - t.sunPower) * day;
 
     // Le soleil fait le tour du ciel ; la lune est à l'opposé.
     const a = (timeOfDay - 0.25) * Math.PI * 2;
