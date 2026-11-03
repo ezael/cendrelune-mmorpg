@@ -29,7 +29,7 @@ export interface Tenue {
   ceinture: string;
 }
 
-class TenuePlugin extends MaterialPluginBase {
+export class TenuePlugin extends MaterialPluginBase {
   tunique = Color3.FromHexString("#8c2a2a");
   pantalon = Color3.FromHexString("#4a3a2e");
   bottes = Color3.FromHexString("#3b2a1e");
@@ -128,13 +128,13 @@ class TenuePlugin extends MaterialPluginBase {
 
 interface Zone { hMin: number; hMax: number; axMax: number }
 const ZONES_VET: Record<"tunique" | "pantalon" | "bottes", { zone: Zone; ep: number; evase?: number }> = {
-  tunique: { zone: { hMin: 0.44, hMax: 0.84, axMax: 0.42 }, ep: 0.02, evase: 0.06 },
+  tunique: { zone: { hMin: 0.44, hMax: 0.855, axMax: 0.42 }, ep: 0.02, evase: 0.06 },
   pantalon: { zone: { hMin: 0.14, hMax: 0.56, axMax: 9 }, ep: 0.011 },
   bottes: { zone: { hMin: -1, hMax: 0.185, axMax: 9 }, ep: 0.024 },
 };
 const coqueCache = new Map<string, VertexData>();
 
-function coque(body: Mesh, H: number, cle: keyof typeof ZONES_VET, cacheKey: string): VertexData {
+export function coque(body: Mesh, H: number, cle: keyof typeof ZONES_VET, cacheKey: string): VertexData {
   const k = `${cacheKey}_${cle}`;
   const hit = coqueCache.get(k);
   if (hit) return hit;

@@ -10,7 +10,8 @@ import { buildDungeon } from "./world/dungeon.js";
 import { buildOutdoor } from "./world/outdoor.js";
 import type { ZoneWorld } from "./world/world.js";
 import { clockLabel } from "./world/atmosphere.js";
-import { Character } from "./entities/character.js";
+import { Avatar } from "./entities/avatar.js";
+import { apparenceParDefaut, encoderApparence, nettoyerApparence, type Apparence } from "../shared/apparence.js";
 import { MobView } from "./entities/mob.js";
 import { Hud, Loading } from "./ui/hud.js";
 import { Minimap, type MapDot } from "./ui/minimap.js";
@@ -25,7 +26,7 @@ import {
 import { WATER_LEVEL, ZONES, heightAt, isWalkable, zoneObstacles, type Obstacle, type ZoneId } from "../shared/zones.js";
 
 interface RemotePlayer {
-  char: Character;
+  char: Avatar;
   plate: Plate;
   x: number;
   y: number;
@@ -88,10 +89,16 @@ export class Game {
   private sessionId = "";
   private traveling = false;
   private mode: "title" | "playing" | "loading" = "title";
-  private previewTime = 0.71;
+  private previewTime = 0.6;
   private timeOverride: number | null = null;
 
-  private me: Character | null = null;
+  private me: Avatar | null = null;
+  /** cap du personnage (commandes old-school : Q/D ou A/D le font tourner) */
+  private heading = 0;
+  private mouseL = false;
+  private mouseR = false;
+  private turning = false;
+  private backward = false;
   private mePlate: Plate | null = null;
   private pos = new Vector3();
   private vy = 0;
@@ -218,11 +225,13 @@ export class Game {
   }
 
   /** Lance la partie depuis l'écran titre. */
-  async start(name: string, color: string) {
+  async start(name: string, look: Apparence) {
     this.mode = "loading";
     this.loading.show(ZONES.clairiere.name, ZONES.clairiere.subtitle);
+    this.clearPreview();
     try {
-      const room = await this.client.joinOrCreate<any>("clairiere", { name, color });
+      await Avatar.precharger(this.scene);
+      const room = await this.client.joinOrCreate<any>("clairiere", { name, color: look.tenue, look: encoderApparence(look) });
       this.attachRoom(room);
       this.enterPlay();
     } catch (err) {
@@ -232,7 +241,64 @@ export class Game {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Écran de création : aperçu 3D du personnage dans la Clairière
+  // ---------------------------------------------------------------------
+
+  private preview: Avatar | null = null;
+  private previewYaw = 0.35;
+  private previewSpin = 0;
+  private static readonly PREVIEW_SPOT = { x: 5, z: 2 };
+
+  /** Affiche (ou remplace) le personnage de l'écran de création. */
+  async showPreview(look: Apparence) {
+    await Avatar.precharger(this.scene);
+    if (this.mode !== "title") return;
+    const old = this.preview;
+    const av = new Avatar(this.scene, "apercu", look);
+    const { x, z } = Game.PREVIEW_SPOT;
+    av.setPosition(x, heightAt("clairiere", x, z), z);
+    av.face(this.previewYaw, 0, true);
+    av.addToShadows(this.world?.shadows ?? null);
+    av.update(0.016, { speed: 0, airborne: false, anim: 0, dead: false });
+    this.preview = av;
+    old?.dispose();
+    this.previewSpin = 0.9; // petit tour sur soi pour montrer le changement
+  }
+
+  private clearPreview() {
+    this.preview?.dispose();
+    this.preview = null;
+  }
+
+  private updatePreview(dt: number) {
+    const av = this.preview;
+    const { x, z } = Game.PREVIEW_SPOT;
+    const y = heightAt("clairiere", x, z);
+    if (av) {
+      if (!this.previewDrag) this.previewYaw += dt * (0.18 + this.previewSpin * 2.2);
+      this.previewSpin = Math.max(0, this.previewSpin - dt);
+      av.face(this.previewYaw, dt, true);
+      av.update(dt, { speed: 0, airborne: false, anim: 0, dead: false });
+    }
+    // caméra : plan rapproché, personnage décalé à gauche de l'écran (réglages à droite)
+    const c = this.camera;
+    const narrow = this.engine.getRenderWidth() < 820 * Math.min(window.devicePixelRatio || 1, 1.5);
+    c.alpha = Math.PI / 2;
+    c.beta = 1.42;
+    c.radius = 5.1;
+    c.target.set(x, y + 1.0, z);
+    c.targetScreenOffset.x = narrow ? 0 : -1.2;
+  }
+  private previewDrag = false;
+
+  /** Apparence d'un joueur synchronisé (repli : humain avec sa couleur de tunique). */
+  private lookOf(p: any): Apparence {
+    return p.look ? nettoyerApparence(p.look, p.color) : apparenceParDefaut("humain", "homme", p.color);
+  }
+
   private enterPlay() {
+    this.camera.targetScreenOffset.set(0, 0);
     this.loading.hide();
     this.hud.show();
     this.mode = "playing";
@@ -295,17 +361,18 @@ export class Game {
 
     this.unsub.push(cb.onAdd("players", (p: any, id: string) => {
       if (id === this.sessionId) {
-        this.me = new Character(this.scene, p.name, p.color, { pickId: id });
+        this.me = new Avatar(this.scene, p.name, this.lookOf(p), { pickId: id });
         this.me.addToShadows(shadows);
         this.pos.set(p.x, this.groundY(p.x, p.z), p.z);
         this.me.setPosition(this.pos.x, this.pos.y, this.pos.z);
-        this.me.face(Math.atan2(-this.pos.x, -this.pos.z), 0, true);
+        this.heading = Math.atan2(-this.pos.x, -this.pos.z);
+        this.me.face(this.heading, 0, true);
         this.mePlate = this.plates.create(this.me.headAnchor, p.name, "#ffe08a", false);
         this.camera.alpha = -this.me.facing - Math.PI / 2;
         this.camera.target.copyFrom(this.pos.add(new Vector3(0, 1.6, 0)));
         return;
       }
-      const char = new Character(this.scene, p.name, p.color, { pickId: id });
+      const char = new Avatar(this.scene, p.name, this.lookOf(p), { pickId: id });
       char.addToShadows(shadows);
       char.setPosition(p.x, p.y, p.z);
       const plate = this.plates.create(char.headAnchor, p.name, "#8fd0ff", false);
@@ -475,11 +542,26 @@ export class Game {
       this.keys.add(e.code);
     });
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
-    window.addEventListener("blur", () => this.keys.clear());
+    window.addEventListener("blur", () => { this.keys.clear(); this.mouseL = this.mouseR = false; });
+    window.addEventListener("pointerup", (e) => { if (e.button === 0) this.mouseL = false; if (e.button === 2) this.mouseR = false; });
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
     document.getElementById("slot-1")!.addEventListener("click", () => this.toggleAttack());
     document.getElementById("slot-2")!.addEventListener("click", () => this.castHeal());
+
+    // écran de création : glisser pour faire tourner le personnage
+    let dragX = 0;
+    this.canvas.addEventListener("pointerdown", (e) => {
+      if (this.mode !== "title") return;
+      this.previewDrag = true;
+      dragX = e.clientX;
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!this.previewDrag) return;
+      this.previewYaw -= (e.clientX - dragX) * 0.012;
+      dragX = e.clientX;
+    });
+    window.addEventListener("pointerup", () => { this.previewDrag = false; });
 
     let downX = 0, downY = 0, lastClick = 0, lastClickId = "";
     this.scene.onPointerObservable.add((pi) => {
@@ -488,6 +570,15 @@ export class Game {
       if (pi.type === PointerEventTypes.POINTERDOWN) {
         downX = ev.clientX;
         downY = ev.clientY;
+        if (ev.button === 0) this.mouseL = true;
+        if (ev.button === 2) this.mouseR = true;
+      }
+      if (pi.type === PointerEventTypes.POINTERUP) {
+        if (ev.button === 0) this.mouseL = false;
+        if (ev.button === 2) this.mouseR = false;
+      }
+      if (pi.type === PointerEventTypes.POINTERDOWN) {
+        // rien d'autre
       } else if (pi.type === PointerEventTypes.POINTERUP && ev.button === 0) {
         if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 6) return;
         const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, (m) => !!m.metadata?.pickId && m.isEnabled());
@@ -611,8 +702,7 @@ export class Game {
     this.world?.update(dt, tod);
 
     if (this.mode === "title") {
-      this.camera.alpha += dt * 0.04;
-      this.camera.target.set(0, 3, 0);
+      this.updatePreview(dt);
     } else if (this.mode === "playing" && this.me && this.room) {
       this.updateLocal(dt);
       this.updateCombat();
@@ -682,17 +772,36 @@ export class Game {
       this.wasDead = dead;
     }
 
+    // Commandes old-school (codes physiques, donc AZERTY et QWERTY) :
+    //   Z/S ou W/S, flèches haut/bas : avancer, reculer
+    //   Q/D (AZERTY) ou A/D (QWERTY), flèches gauche/droite : TOURNER
+    //   A/E (AZERTY) ou Q/E (QWERTY) : pas de côté
+    //   clic droit maintenu : la souris dirige le personnage, et Q/D deviennent des pas de côté
+    //   clic gauche + clic droit : avancer
     const k = this.keys;
-    let fwd = 0, strafe = 0;
+    let fwd = 0, strafe = 0, turn = 0;
     if (!dead) {
-      if (k.has("KeyW") || k.has("ArrowUp")) fwd += 1;
+      if (k.has("KeyW") || k.has("ArrowUp") || (this.mouseL && this.mouseR)) fwd += 1;
       if (k.has("KeyS") || k.has("ArrowDown")) fwd -= 1;
-      if (k.has("KeyA") || k.has("ArrowLeft")) strafe -= 1;
-      if (k.has("KeyD") || k.has("ArrowRight")) strafe += 1;
+      if (k.has("KeyQ")) strafe -= 1;
+      if (k.has("KeyE")) strafe += 1;
+      const left = k.has("KeyA") || k.has("ArrowLeft");
+      const right = k.has("KeyD") || k.has("ArrowRight");
+      if (this.mouseR) {
+        if (left) strafe -= 1;
+        if (right) strafe += 1;
+      } else {
+        if (left) turn -= 1;
+        if (right) turn += 1;
+      }
+      fwd = Math.max(-1, Math.min(1, fwd));
+      strafe = Math.max(-1, Math.min(1, strafe));
     }
-    // Direction « devant » = de la caméra vers le personnage, à plat.
-    const fx = -Math.cos(this.camera.alpha);
-    const fz = -Math.sin(this.camera.alpha);
+    const TURN_SPEED = 2.6; // rad/s
+    if (this.mouseR) this.heading = -this.camera.alpha - Math.PI / 2;
+    else if (turn !== 0) this.heading += turn * TURN_SPEED * dt;
+    const fx = Math.sin(this.heading);
+    const fz = Math.cos(this.heading);
     const rx = fz;
     const rz = -fx;
     let dx = fx * fwd + rx * strafe;
@@ -726,8 +835,22 @@ export class Game {
         this.pos.z = nz;
       }
       speed = Math.hypot(this.pos.x - ox, this.pos.z - oz) / dt;
-      const faceYaw = fwd < 0 && strafe === 0 ? Math.atan2(fx, fz) : Math.atan2(dx, dz);
+      // en reculant, le personnage garde son cap (marche arrière) ; sinon il regarde où il va
+      const faceYaw = this.autopilot ? Math.atan2(dx, dz) : fwd < 0 ? this.heading : Math.atan2(dx, dz);
       me.face(faceYaw, dt);
+    } else if (turn !== 0 || this.mouseR) {
+      me.face(this.heading, dt, turn !== 0);
+    }
+    this.backward = fwd < 0 && !this.autopilot;
+    this.turning = turn !== 0 && len === 0;
+
+    // La caméra se replace derrière le personnage quand il bouge ou tourne
+    // (sauf si le joueur la fait pivoter lui-même au clic gauche).
+    if ((fwd !== 0 || strafe !== 0 || turn !== 0) && !this.mouseL && !this.mouseR && !this.autopilot) {
+      let d = -this.heading - Math.PI / 2 - this.camera.alpha;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.camera.alpha += d * Math.min(1, dt * (turn !== 0 ? 12 : 3.5));
     }
 
     if (this.jumpQueued && this.grounded && !dead) {
@@ -754,7 +877,7 @@ export class Game {
     this.anim = !this.grounded ? 3 : speed > 0.3 ? (speed > WALK_SPEED + 0.5 ? 2 : 1) : now < this.emoteUntil ? 4 : this.sitting ? 5 : 0;
     me.setPosition(this.pos.x, this.pos.y, this.pos.z);
     this.lantern?.position.set(this.pos.x, this.pos.y + 2.6, this.pos.z);
-    me.update(dt, { speed, airborne: !this.grounded, anim: this.anim, dead });
+    me.update(dt, { speed, airborne: !this.grounded, anim: this.anim, dead, backward: this.backward && speed > 0.3, turning: this.turning });
 
     // Caméra : suit le personnage en douceur.
     const tgt = this.pos.add(new Vector3(0, 1.6, 0));
@@ -823,7 +946,9 @@ export class Game {
       r.speed += (sp - r.speed) * Math.min(1, dt * 10);
       r.char.setPosition(r.x, r.y, r.z);
       r.char.face(p.ry, dt);
-      r.char.update(dt, { speed: r.speed, airborne: p.anim === 3, anim: p.anim, dead: p.dead });
+      // recule-t-il ? (déplacement opposé à son orientation)
+      const back = (r.x - ox) * Math.sin(p.ry) + (r.z - oz) * Math.cos(p.ry) < -0.001 * Math.max(dt, 1e-3);
+      r.char.update(dt, { speed: r.speed, airborne: p.anim === 3, anim: p.anim, dead: p.dead, backward: back && r.speed > 0.3 });
     }
   }
 

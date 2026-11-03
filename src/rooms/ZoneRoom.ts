@@ -7,6 +7,7 @@ import {
   TUNIC_COLORS, mobRadius, mobXp, playerDamage, playerMaxHp, xpToNextLevel, type MobKind,
 } from "../shared/rules.js";
 import { characters, travelTickets, type CharacterRecord } from "../characters.js";
+import { encoderApparence, nettoyerApparence } from "../shared/apparence.js";
 
 const BOOT_TIME = Date.now();
 
@@ -36,6 +37,7 @@ interface PlayerRuntime {
 interface JoinOptions {
   name?: string;
   color?: string;
+  look?: string;
   ticket?: string;
 }
 
@@ -96,8 +98,10 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
     } else {
       const name = cleanName(options.name);
       const color = TUNIC_COLORS.includes(options.color ?? "") ? options.color! : TUNIC_COLORS[0];
-      record = characters.load(name) ?? { name, color, level: 1, xp: 0, hp: playerMaxHp(1) };
+      const look = encoderApparence(nettoyerApparence(options.look, color));
+      record = characters.load(name) ?? { name, color, look, level: 1, xp: 0, hp: playerMaxHp(1) };
       record.color = color;
+      record.look = look;
       x += rand(-2, 2);
       z += rand(-2, 2);
     }
@@ -109,7 +113,7 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
 
     const maxHp = playerMaxHp(record.level);
     this.state.players.set(client.sessionId, new Player({
-      name: record.name, color: record.color, x, y: 0, z, ry: 0, anim: 0,
+      name: record.name, color: record.color, look: record.look, x, y: 0, z, ry: 0, anim: 0,
       level: record.level, xp: record.xp, hp: Math.min(maxHp, Math.max(1, record.hp)), maxHp,
       targetId: "", dead: false,
     }));
@@ -124,7 +128,7 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
   onLeave(client: Client) {
     const p = this.state.players.get(client.sessionId);
     if (p) {
-      characters.save({ name: p.name, color: p.color, level: p.level, xp: p.xp, hp: p.hp });
+      characters.save({ name: p.name, color: p.color, look: p.look, level: p.level, xp: p.xp, hp: p.hp });
       this.broadcast("system", { text: `${p.name} quitte la zone.` }, { except: client });
     }
     this.state.players.delete(client.sessionId);
@@ -231,7 +235,7 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
     const portal = this.zone.portals.find((po) => po.id === msg?.id);
     if (!p || !portal || p.dead) return;
     if (Math.hypot(portal.x - p.x, portal.z - p.z) > portal.radius + 2.5) return;
-    const record: CharacterRecord = { name: p.name, color: p.color, level: p.level, xp: p.xp, hp: p.hp };
+    const record: CharacterRecord = { name: p.name, color: p.color, look: p.look, level: p.level, xp: p.xp, hp: p.hp };
     characters.save(record);
     const ticket = travelTickets.issue({ to: portal.to, x: portal.arrival.x, z: portal.arrival.z, character: record });
     client.send("travel", { to: portal.to, ticket });

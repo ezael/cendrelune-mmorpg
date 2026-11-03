@@ -9,6 +9,8 @@ import { buildOutdoor } from "../world/outdoor.js";
 import { heightAt } from "../../shared/zones.js";
 import { Character } from "../entities/character.js";
 import { PersoCC0, type OptionsPerso, type Style, type Anim } from "./personnage-cc0.js";
+import { Avatar } from "../entities/avatar.js";
+import { RACE_IDS, apparenceParDefaut, type CorpsId } from "../../shared/apparence.js";
 
 const params = new URLSearchParams(location.search);
 const heure = Number(params.get("heure") ?? "0.45");
@@ -68,6 +70,7 @@ function ancien(dx: number, dz = 0) {
   return c;
 }
 
+const avatars: Avatar[] = [];
 async function monter() {
   const anciens: Character[] = [];
   if (mode === "styles") {
@@ -105,6 +108,33 @@ async function monter() {
     await placer("hum_f", base(style, true), 1.0, 0, "repos", 0, ol);
     cam.radius = 5.0;
     cam.target.y -= 0.2;
+  } else if (mode === "avatars") {
+    // Les 4 races, homme devant / femme derrière, avec la classe utilisée en jeu
+    await Avatar.precharger(scene);
+    const anim = params.get("anim") ?? "repos";
+    const tenues = ["#c0392b", "#27ae60", "#8e44ad", "#e67e22"];
+    RACE_IDS.forEach((race, i) => {
+      (["homme", "femme"] as CorpsId[]).forEach((corps, j) => {
+        const seul = params.get("seul");
+        if (seul && seul !== `${race}_${corps}`) return;
+        const a = apparenceParDefaut(race, corps, tenues[i]);
+        const av = new Avatar(scene, `${race}_${corps}`, a);
+        const x = seul ? cx : cx + (i - 1.5) * 1.35 + (j ? 0.5 : 0), z = seul ? cz : cz + j * 1.3;
+        av.setPosition(x, gy(x, z), z);
+        av.face(Number(params.get("yaw") ?? "0"), 0, true);
+        av.addToShadows(world.shadows);
+        avatars.push(av);
+      });
+    });
+    const st = { speed: anim === "course" ? 7 : anim === "marche" ? 1.2 : 0, airborne: false, anim: anim === "assis" ? 5 : 0, dead: anim === "mort" };
+    scene.onBeforeRenderObservable.add(() => {
+      for (const av of avatars) av.update(engine.getDeltaTime() / 1000, st);
+    });
+    if (anim === "attaque") setInterval(() => avatars.forEach((a) => a.attack()), 1400);
+    if (anim === "sort") setInterval(() => avatars.forEach((a) => a.cast()), 1400);
+    cam.radius = params.get("seul") ? 2.6 : 7.5;
+    if (!params.get("seul")) { cam.target.x = cx + 0.25; cam.target.z = cz + 0.6; }
+    else cam.target.y = gy(cx, cz) + Number(params.get("hy") ?? "1.2");
   } else if (mode === "foule") {
     const n = Number(params.get("n") ?? "30");
     const anims: Anim[] = ["repos", "marche", "course", "parle"];

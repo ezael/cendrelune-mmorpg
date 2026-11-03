@@ -11,8 +11,15 @@
 <body>
   <canvas id="game" touch-action="none"></canvas>
 
-  <!-- Écran titre -->
+  <!-- Écran titre : création du personnage (aperçu 3D à gauche, réglages à droite) -->
   <div id="title" class="overlay">
+    <div class="title-left">
+      <div class="race-banner">
+        <div class="rb-name" id="rb-name"></div>
+        <div class="rb-motto" id="rb-motto"></div>
+      </div>
+      <div class="drag-hint">Fais glisser pour tourner le personnage</div>
+    </div>
     <div class="title-card">
       <div class="logo">Cendrelune</div>
       <div class="tagline">Les terres de braise et de lune</div>
@@ -21,10 +28,44 @@
         <input id="name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Aldric" />
       </label>
       <div class="field">
+        <span>Peuple</span>
+        <div id="races" class="races"></div>
+        <div id="race-desc" class="race-desc"></div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span>Corps</span>
+          <div id="corps" class="seg"></div>
+        </div>
+        <div class="field" id="barbe-field">
+          <span>Barbe</span>
+          <div id="barbe" class="seg"></div>
+        </div>
+      </div>
+      <div class="field">
+        <span>Teint</span>
+        <div id="peaux" class="swatches"></div>
+      </div>
+      <div class="field">
+        <span>Coiffure</span>
+        <div class="picker">
+          <button id="coif-prev" class="pick-btn" aria-label="Coiffure précédente">‹</button>
+          <div id="coif-name" class="pick-name"></div>
+          <button id="coif-next" class="pick-btn" aria-label="Coiffure suivante">›</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Couleur des cheveux</span>
+        <div id="cheveux" class="swatches"></div>
+      </div>
+      <div class="field">
         <span>Couleur de la tunique</span>
         <div id="swatches" class="swatches"></div>
       </div>
-      <button id="play" class="btn-primary">Entrer dans Cendrelune</button>
+      <div class="actions">
+        <button id="random" class="btn-secondary" title="Apparence au hasard">🎲</button>
+        <button id="play" class="btn-primary">Entrer dans Cendrelune</button>
+      </div>
       <div id="title-status" class="status"></div>
       <div class="hint">Clavier + souris · Ouvre un deuxième onglet pour jouer en groupe</div>
     </div>
@@ -76,9 +117,11 @@
 
     <div id="help" class="hidden">
       <h3>Commandes</h3>
-      <div><b>ZQSD / WASD / flèches</b> se déplacer</div>
+      <div><b>Z / S</b> (ou W / S, flèches) avancer, reculer</div>
+      <div><b>Q / D</b> (ou A / D, flèches) tourner · <b>A / E</b> (ou Q / E) pas de côté</div>
+      <div><b>Clic droit maintenu</b> la souris dirige le personnage · <b>deux clics</b> avancer</div>
       <div><b>Maj</b> marcher · <b>Espace</b> sauter</div>
-      <div><b>Clic gauche ou droit + glisser</b> tourner la caméra</div>
+      <div><b>Clic gauche + glisser</b> regarder autour</div>
       <div><b>Molette</b> zoom</div>
       <div><b>Clic</b> sur un monstre ou un joueur : cibler · <b>Tab</b> cible suivante</div>
       <div><b>1</b> attaque auto · <b>2</b> soin · <b>Échap</b> annuler la cible</div>

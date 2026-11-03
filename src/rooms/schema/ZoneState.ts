@@ -4,6 +4,8 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 export const Player = schema({
   name: t.string(),
   color: t.string(),
+  /** apparence (race, corps, couleurs…) en JSON court, validée par le serveur */
+  look: t.string(),
   x: t.number(),
   y: t.number(),
   z: t.number(),

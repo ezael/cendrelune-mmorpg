@@ -2,6 +2,63 @@
 
 Ce fichier garde la trace des décisions et des étapes du projet. Les entrées les plus récentes sont en haut.
 
+## 2026-11-03 : nouveaux personnages et 4 races dans le jeu
+
+Demande de Thierry : « go, fait la totale ». Il faut donc intégrer les personnages au style B dans le jeu, avec les races et un écran de création. Il a ajouté une deuxième demande : Q/D doivent faire tourner le personnage, et les touches équivalentes en QWERTY aussi.
+
+### Ce qui a été fait
+
+- **Nouvel avatar** (`src/client/entities/avatar.ts`) : il remplace l'ancien personnage en cubes, partout dans le jeu, pour soi, pour les autres joueurs et dans les deux zones.
+  - Il utilise le corps CC0 de Quaternius et ses animations : repos, marche, course, sprint, saut, attaque à l'épée, sort, coup reçu, mort et assis.
+  - Les animations sont en deux couches (jambes et haut du corps), ce qui permet d'attaquer en courant.
+  - La vitesse de l'animation suit la vitesse réelle. La marche arrière joue l'animation à l'envers.
+  - Le personnage porte une épée dans la main droite et projette une ombre.
+- **4 races jouables** (`src/shared/apparence.ts`) :
+
+  | Race | Devise | Particularités |
+  |---|---|---|
+  | **Humains** | les bâtisseurs de la Clairière | proportions de référence |
+  | **Sylvains** | les gardiens des forêts anciennes | grands et fins, oreilles pointues |
+  | **Roncenains** | les forgerons des montagnes | petits, trapus, grosses mains, barbe par défaut |
+  | **Cendrins** | les enfants de la braise | grands, peau grise, cornes, yeux qui luisent comme des braises |
+
+- **Écran de création** :
+  - le personnage est montré en 3D dans la Clairière, il tourne seul, et on peut le faire tourner à la souris ;
+  - on choisit le peuple, le corps (homme ou femme), le teint, la coiffure (6 choix), la couleur des cheveux, la barbe et la couleur de la tunique ;
+  - un bouton 🎲 tire une apparence au hasard ;
+  - le navigateur retient le dernier personnage.
+- **Serveur** : chaque joueur a un champ `look`, qui contient l'apparence. Le serveur la vérifie (`nettoyerApparence`) avant de l'accepter. Elle est sauvegardée avec le personnage et suit les voyages entre les zones.
+- **Contrôles « à l'ancienne »** : on lit la position des touches, pas la lettre, donc ils marchent en AZERTY comme en QWERTY.
+
+  | Action | AZERTY | QWERTY |
+  |---|---|---|
+  | Tourner | Q / D | A / D |
+  | Pas de côté | A / E | Q / E |
+  | Avancer, reculer | Z / S | W / S |
+
+  - Les flèches font aussi tourner. La caméra se replace derrière le personnage.
+  - Avec le clic droit maintenu, la souris dirige le personnage, et Q/D (A/D en QWERTY) font des pas de côté.
+  - Avec les deux boutons de la souris enfoncés, le personnage avance.
+- **Labo** : `labo.html?scene=avatars` montre les 4 races avec le vrai avatar du jeu.
+
+### Vérifié (navigateur sans carte graphique)
+
+- Les 4 races s'affichent dans l'écran de création et en jeu. Deux joueurs voient bien la race l'un de l'autre.
+- Les contrôles ont été mesurés :
+  - D pendant 1 s fait tourner de 2,6 radians à droite ;
+  - Z fait avancer et S reculer, plus lentement ;
+  - la caméra revient derrière le personnage.
+- L'attaque en pleine course, la mort, la réapparition et le voyage vers la Grotte des Échos fonctionnent, et le voyage garde la race.
+- Aucune fuite d'animations ni de maillages, et aucune erreur dans la page.
+- Il y a eu une fusion avec le nouveau sol et les ambiances (autre fil), car `game.ts` avait été modifié des deux côtés. Elle a été testée : écran de création, jeu, puis `/ambiance hiver` et `/ambiance cendres`, sans erreur.
+
+### Limites connues
+
+- Les vêtements sont des « coques » générées à partir du corps : une tunique, un pantalon et des bottes. Il n'y a pas encore de vraies pièces d'armure.
+- Il n'existe pas d'animation de pas de côté ni de rotation sur place. Ces deux mouvements utilisent la marche.
+- **Performances non mesurées** : environ 22 000 triangles et une dizaine d'appels de dessin par personnage. C'est à vérifier sur le Mac avec plusieurs joueurs. `?qualite=basse` retire le relief des textures et les ombres reçues.
+- Les noms et les devises des races sont des propositions, et Thierry doit les valider.
+
 ## 2026-11-03 : prototype 0.1, une zone de test jouable
 
 **Rôles.** Thierry est le directeur créatif. Claude écrit le code, crée les assets et fait le game design.

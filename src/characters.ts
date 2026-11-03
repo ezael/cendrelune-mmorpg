@@ -9,6 +9,8 @@ import type { ZoneId } from "./shared/zones.js";
 export interface CharacterRecord {
   name: string;
   color: string;
+  /** apparence encodée (voir shared/apparence.ts) */
+  look: string;
   level: number;
   xp: number;
   hp: number;
