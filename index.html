@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cendrelune</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/client/style.css" />
+</head>
+<body>
+  <canvas id="game" touch-action="none"></canvas>
+
+  <!-- Écran titre -->
+  <div id="title" class="overlay">
+    <div class="title-card">
+      <div class="logo">Cendrelune</div>
+      <div class="tagline">Les terres de braise et de lune</div>
+      <label class="field">
+        <span>Nom du personnage</span>
+        <input id="name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Aldric" />
+      </label>
+      <div class="field">
+        <span>Couleur de la tunique</span>
+        <div id="swatches" class="swatches"></div>
+      </div>
+      <button id="play" class="btn-primary">Entrer dans Cendrelune</button>
+      <div id="title-status" class="status"></div>
+      <div class="hint">Clavier + souris · Ouvre un deuxième onglet pour jouer en groupe</div>
+    </div>
+  </div>
+
+  <!-- Chargement de zone -->
+  <div id="loading" class="overlay hidden">
+    <div class="loading-name" id="loading-name"></div>
+    <div class="loading-sub" id="loading-sub"></div>
+    <div class="spinner"></div>
+    <div class="loading-tip" id="loading-tip"></div>
+  </div>
+
+  <!-- Interface de jeu -->
+  <div id="hud" class="hidden">
+    <div id="player-frame" class="unit-frame">
+      <div class="uf-name"><span id="pf-name"></span><span class="uf-level" id="pf-level"></span></div>
+      <div class="bar hp"><div class="fill" id="pf-hp"></div><span id="pf-hp-text"></span></div>
+      <div class="bar xp"><div class="fill" id="pf-xp"></div><span id="pf-xp-text"></span></div>
+    </div>
+    <div id="target-frame" class="unit-frame hidden">
+      <div class="uf-name"><span id="tf-name"></span><span class="uf-level" id="tf-level"></span></div>
+      <div class="bar hp"><div class="fill" id="tf-hp"></div><span id="tf-hp-text"></span></div>
+    </div>
+
+    <div id="top-right">
+      <canvas id="minimap" width="168" height="168"></canvas>
+      <div id="zone-label"></div>
+      <div id="clock"></div>
+      <div id="coords"></div>
+    </div>
+
+    <div id="zone-banner"><div class="zb-name"></div><div class="zb-sub"></div></div>
+    <div id="center-msg"></div>
+
+    <div id="chat">
+      <div id="chat-log"></div>
+      <input id="chat-input" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Entrée pour parler · /aide pour les commandes" />
+    </div>
+
+    <div id="actionbar">
+      <div class="slot" id="slot-1" title="Attaque automatique (1)">
+        <div class="icon">⚔</div><div class="key">1</div><div class="cd"></div><div class="label">Attaque</div>
+      </div>
+      <div class="slot" id="slot-2" title="Lumière apaisante : soigne ta cible amicale ou toi-même (2)">
+        <div class="icon">✚</div><div class="key">2</div><div class="cd"></div><div class="label">Soin</div>
+      </div>
+    </div>
+
+    <div id="help" class="hidden">
+      <h3>Commandes</h3>
+      <div><b>ZQSD / WASD / flèches</b> se déplacer</div>
+      <div><b>Maj</b> marcher · <b>Espace</b> sauter</div>
+      <div><b>Clic gauche ou droit + glisser</b> tourner la caméra</div>
+      <div><b>Molette</b> zoom</div>
+      <div><b>Clic</b> sur un monstre ou un joueur : cibler · <b>Tab</b> cible suivante</div>
+      <div><b>1</b> attaque auto · <b>2</b> soin · <b>Échap</b> annuler la cible</div>
+      <div><b>Entrée</b> discuter · <b>/salut</b> · <b>/assis</b> · <b>/qui</b> · <b>/loc</b></div>
+      <div><b>H</b> afficher / masquer cette aide</div>
+    </div>
+    <div id="help-hint">H : aide</div>
+
+    <div id="death" class="hidden">
+      <div class="death-title">Tu as été vaincu</div>
+      <div class="death-sub">Tu reprends connaissance dans quelques instants…</div>
+    </div>
+    <div id="hurt-flash"></div>
+  </div>
+
+  <script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>
