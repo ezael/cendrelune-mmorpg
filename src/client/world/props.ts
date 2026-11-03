@@ -1,7 +1,7 @@
 /**
  * Modèles 3D du décor, générés en code (arbres, rochers, maisons, feu de camp…).
  */
-import { Color3, Mesh, MeshBuilder, Scene } from "@babylonjs/core";
+import { Color3, Mesh, MeshBuilder, Scene, VertexBuffer } from "@babylonjs/core";
 import { rng } from "../../shared/noise.js";
 import { build, hex, jitter, paint, place, wobble } from "./kit.js";
 
@@ -16,11 +16,13 @@ const OAK_LEAVES = [
   ["#4f9a4a", "#62ad55", "#77c262"],
 ];
 
-export function makePine(scene: Scene, variant: number): Mesh {
+export function makePine(
+  scene: Scene, variant: number, palette?: string[], trunk = "#6b4a2f", snowy = false,
+): Mesh {
   const r = rng(100 + variant);
   const parts: Mesh[] = [];
-  parts.push(paint(place(MeshBuilder.CreateCylinder("t", { height: 1.6, diameterTop: 0.22, diameterBottom: 0.38, tessellation: 6 }, scene), [0, 0.8, 0]), hex("#6b4a2f")));
-  const cols = FOLIAGE[variant % FOLIAGE.length];
+  parts.push(paint(place(MeshBuilder.CreateCylinder("t", { height: 1.6, diameterTop: 0.22, diameterBottom: 0.38, tessellation: 6 }, scene), [0, 0.8, 0]), hex(trunk)));
+  const cols = palette ?? FOLIAGE[variant % FOLIAGE.length];
   const layers = [
     { y: 1.6, h: 2.0, d: 2.9 },
     { y: 2.7, h: 1.8, d: 2.3 },
@@ -31,17 +33,48 @@ export function makePine(scene: Scene, variant: number): Mesh {
     wobble(cone, 0.18, r);
     place(cone, [0, l.y + l.h / 2 - 0.3, 0], [0, r() * 3, 0]);
     paint(cone, jitter(hex(cols[i]), 0.05, r));
+    if (snowy) snowCap(cone, l.y - 0.3 + l.h * 0.38, r);
     parts.push(cone);
   });
   return build(`pine${variant}`, parts, scene);
 }
 
-export function makeOak(scene: Scene, variant: number): Mesh {
+/** Blanchit le haut d'un mesh (neige posée sur les branches). */
+function snowCap(mesh: Mesh, fromY: number, r: () => number) {
+  const pos = mesh.getVerticesData(VertexBuffer.PositionKind)!;
+  const col = mesh.getVerticesData(VertexBuffer.ColorKind)!;
+  for (let i = 0, v = 0; i < pos.length; i += 3, v += 4) {
+    if (pos[i + 1] < fromY + (r() - 0.5) * 0.25) continue;
+    const w = 0.92 + r() * 0.08;
+    col[v] = 0.93 * w;
+    col[v + 1] = 0.96 * w;
+    col[v + 2] = 1.0 * w;
+  }
+  mesh.setVerticesData(VertexBuffer.ColorKind, col);
+}
+
+export function makeOak(scene: Scene, variant: number, palette?: string[] | null, trunk = "#76522f"): Mesh {
   const r = rng(200 + variant);
   const parts: Mesh[] = [];
-  parts.push(paint(place(MeshBuilder.CreateCylinder("t", { height: 2.0, diameterTop: 0.3, diameterBottom: 0.5, tessellation: 6 }, scene), [0, 1.0, 0]), hex("#76522f")));
-  parts.push(paint(place(MeshBuilder.CreateCylinder("b", { height: 1.0, diameterTop: 0.1, diameterBottom: 0.2, tessellation: 5 }, scene), [0.35, 2.0, 0], [0, 0, -0.7]), hex("#76522f")));
-  const cols = OAK_LEAVES[variant % OAK_LEAVES.length];
+  const wood = hex(trunk);
+  parts.push(paint(place(MeshBuilder.CreateCylinder("t", { height: 2.0, diameterTop: 0.3, diameterBottom: 0.5, tessellation: 6 }, scene), [0, 1.0, 0]), wood));
+  parts.push(paint(place(MeshBuilder.CreateCylinder("b", { height: 1.0, diameterTop: 0.1, diameterBottom: 0.2, tessellation: 5 }, scene), [0.35, 2.0, 0], [0, 0, -0.7]), wood));
+  if (palette === null) {
+    // Arbre nu : une ramure de branches tordues.
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + r() * 0.6;
+      const tilt = 0.5 + r() * 0.5;
+      const len = 1.2 + r() * 1.1;
+      const y = 1.7 + r() * 0.9;
+      const br = MeshBuilder.CreateCylinder("br", { height: len, diameterTop: 0.03, diameterBottom: 0.14, tessellation: 4 }, scene);
+      place(br, [Math.cos(a) * Math.sin(tilt) * len * 0.5, y + Math.cos(tilt) * len * 0.5, Math.sin(a) * Math.sin(tilt) * len * 0.5],
+        [Math.sin(a) * tilt, 0, -Math.cos(a) * tilt]);
+      paint(br, jitter(wood, 0.08, r));
+      parts.push(br);
+    }
+    return build(`oakBare${variant}`, parts, scene);
+  }
+  const cols = palette ?? OAK_LEAVES[variant % OAK_LEAVES.length];
   const blobs: Array<[number, number, number, number]> = [
     [0, 2.9, 0, 1.55], [0.75, 2.5, 0.3, 1.05], [-0.7, 2.55, -0.2, 1.1], [0.1, 2.45, -0.75, 1.0], [-0.2, 3.5, 0.2, 0.9],
   ];
@@ -208,16 +241,28 @@ export function makeCaveArch(scene: Scene): Mesh {
   return build("caveArch", parts, scene);
 }
 
-export function makeGrassTuft(scene: Scene): Mesh {
+export function makeGrassTuft(scene: Scene, base = "#5c9a3c", tip = "#9ccc5a", height = 1): Mesh {
   const parts: Mesh[] = [];
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2;
-    const blade = MeshBuilder.CreateCylinder("g", { height: 0.5, diameterTop: 0, diameterBottom: 0.09, tessellation: 3 }, scene);
-    place(blade, [Math.cos(a) * 0.08, 0.22, Math.sin(a) * 0.08], [Math.sin(a) * 0.35, 0, Math.cos(a) * 0.35]);
-    paint(blade, Color3.Lerp(hex("#5c9a3c"), hex("#9ccc5a"), i / 4));
+  const r = rng(77);
+  const b = hex(base);
+  const t = hex(tip);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + r() * 0.5;
+    const h = (0.42 + r() * 0.25) * height;
+    const blade = MeshBuilder.CreateCylinder("g", { height: h, diameterTop: 0, diameterBottom: 0.08, tessellation: 3 }, scene);
+    place(blade, [Math.cos(a) * 0.09, h / 2 - 0.03, Math.sin(a) * 0.09], [Math.sin(a) * 0.4, r() * 3, Math.cos(a) * 0.4]);
+    // Dégradé du pied (sombre) à la pointe (claire), par sommet.
+    const pos = blade.getVerticesData(VertexBuffer.PositionKind)!;
+    const col = new Float32Array((pos.length / 3) * 4);
+    for (let v = 0; v < pos.length / 3; v++) {
+      const k = Math.max(0, Math.min(1, pos[v * 3 + 1] / (h * 0.9)));
+      const c = Color3.Lerp(b, t, k * (0.8 + i * 0.04));
+      col.set([c.r, c.g, c.b, 1], v * 4);
+    }
+    blade.setVerticesData(VertexBuffer.ColorKind, col);
     parts.push(blade);
   }
-  return build("grass", parts, scene);
+  return build("grass", parts, scene, false);
 }
 
 export function makeFlower(scene: Scene, color: string): Mesh {

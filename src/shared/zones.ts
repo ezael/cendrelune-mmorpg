@@ -44,6 +44,8 @@ export interface ZoneDef {
   spawn: { x: number; z: number };
   portals: Portal[];
   mobs: MobSpawn[];
+  /** Ambiance visuelle par défaut (voir src/client/world/biomes.ts). */
+  ambiance?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,14 @@ function outdoorHeight(x: number, z: number): number {
   return h;
 }
 
+/** Densité de la forêt (0-1) : sert au placement des arbres et à l'ombre des sous-bois. */
+export function forestDensity(x: number, z: number): number {
+  return fbm(x * 0.03, z * 0.03, OUT_SEED + 5, 3);
+}
+
+/** Distance au chemin de terre le plus proche. */
+export { pathDistance };
+
 let outdoorObstacles: Obstacle[] | null = null;
 
 /** Arbres, rochers, maisons… générés une fois de façon déterministe. */
@@ -138,7 +148,7 @@ export function getOutdoorObstacles(): Obstacle[] {
   for (let i = 0; i < 1400 && list.length < 520; i++) {
     const x = (r() * 2 - 1) * (OUT_HALF - 4);
     const z = (r() * 2 - 1) * (OUT_HALF - 4);
-    const density = fbm(x * 0.03, z * 0.03, OUT_SEED + 5, 3);
+    const density = forestDensity(x, z);
     if (density < 0.47) continue;
     if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.radius + 6) continue;
     if (pathDistance(x, z) < 4.5) continue;
@@ -246,6 +256,7 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
     name: "Clairière de Cendrelune",
     subtitle: "Village paisible au cœur des bois",
     kind: "outdoor",
+    ambiance: "printemps",
     half: OUT_HALF,
     spawn: { x: 5, z: 9 },
     portals: [
